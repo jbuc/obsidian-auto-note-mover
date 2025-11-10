@@ -7,6 +7,7 @@ import { arrayMove } from 'utils/Utils';
 export interface PropertyRule {
 	property: string;
 	value: string;
+	title: string;
 	folder: string;
 }
 
@@ -16,7 +17,6 @@ export interface ExcludedFolder {
 
 export interface AutoNoteMoverSettings {
 	trigger_auto_manual: string;
-	use_regex_to_check_property_values: boolean;
 	statusBar_trigger_indicator: boolean;
 	property_rules: Array<PropertyRule>;
 	use_regex_to_check_for_excluded_folder: boolean;
@@ -25,9 +25,8 @@ export interface AutoNoteMoverSettings {
 
 export const DEFAULT_SETTINGS: AutoNoteMoverSettings = {
 	trigger_auto_manual: 'Automatic',
-	use_regex_to_check_property_values: false,
 	statusBar_trigger_indicator: true,
-	property_rules: [{ property: '', value: '', folder: '' }],
+	property_rules: [{ property: '', value: '', title: '', folder: '' }],
 	use_regex_to_check_for_excluded_folder: false,
 	excluded_folder: [{ folder: '' }],
 };
@@ -103,39 +102,17 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					})
 			);
 
-		const useRegexToCheckPropertyValues = document.createDocumentFragment();
-		useRegexToCheckPropertyValues.append(
-			'If enabled, property values will be checked with regular expressions.',
-			descEl.createEl('br'),
-			'For example, if you want to match the word project anywhere in the value, you would write ',
-			descEl.createEl('strong', { text: 'project' }),
-			descEl.createEl('br'),
-			'Use this when you need pattern-based matching across frontmatter properties or tags.',
-			descEl.createEl('br'),
-			descEl.createEl('strong', {
-				text: 'If you simply want to compare exact values, keep this disabled.',
-			})
-		);
-		new Setting(this.containerEl)
-			.setName('Use regular expressions to check property values')
-			.setDesc(useRegexToCheckPropertyValues)
-			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.use_regex_to_check_property_values).onChange(async (value) => {
-					this.plugin.settings.use_regex_to_check_property_values = value;
-					await this.plugin.saveSettings();
-					this.display();
-				});
-			});
-
 		const ruleDesc = document.createDocumentFragment();
 		ruleDesc.append(
-			'1. Enter the property you want to evaluate (for example: tags, type, status, title).',
+			'1. Enter the property you want to evaluate (for example: tags, type, status, folder, path).',
 			descEl.createEl('br'),
-			'2. Provide the value to match. If regex is enabled, the value is treated as a pattern.',
+			'2. Provide the exact value to match for that property.',
 			descEl.createEl('br'),
-			'3. Choose the folder notes should be moved to when the rule matches.',
+			'3. (Optional) Define a title pattern using JavaScript regular expressions if you want to move notes based on their name.',
 			descEl.createEl('br'),
-			'4. The rules are checked in order from the top. The notes will be moved to the folder with the ',
+			'4. Choose the destination folder for matching notes.',
+			descEl.createEl('br'),
+			'5. Rules run from top to bottom. Notes are moved by the ',
 			descEl.createEl('strong', { text: 'first matching rule.' }),
 			descEl.createEl('br'),
 			descEl.createEl('br'),
@@ -160,6 +137,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 						this.plugin.settings.property_rules.push({
 							property: '',
 							value: '',
+							title: '',
 							folder: '',
 						});
 						await this.plugin.saveSettings();
@@ -178,13 +156,18 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 						});
 				})
 				.addText((cb) => {
-					cb.setPlaceholder('Value (string or regex)')
+					cb.setPlaceholder('Value (exact match)')
 						.setValue(rule.value)
 						.onChange(async (newValue) => {
-							this.plugin.settings.property_rules[index].value = this.plugin.settings
-								.use_regex_to_check_property_values
-								? newValue
-								: newValue.trim();
+							this.plugin.settings.property_rules[index].value = newValue.trim();
+							await this.plugin.saveSettings();
+						});
+				})
+				.addText((cb) => {
+					cb.setPlaceholder('Title regex (optional)')
+						.setValue(rule.title)
+						.onChange(async (newTitle) => {
+							this.plugin.settings.property_rules[index].title = newTitle;
 							await this.plugin.saveSettings();
 						});
 				})

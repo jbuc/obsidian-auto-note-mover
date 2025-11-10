@@ -98,33 +98,38 @@ export default class AutoNoteMover extends Plugin {
 			// checker
 			for (let i = 0; i < settingsLength; i++) {
 				const rule = propertyRules[i];
-				const { folder, property, value } = rule;
-				if (!folder || !property || !value) {
+				const folder = rule.folder?.trim();
+				const property = rule.property?.trim();
+				const value = rule.value?.trim();
+				const titlePattern = rule.title;
+
+				if (!folder) {
 					continue;
 				}
 
-				const propertyValues = getPropertyValues(property);
-				if (!propertyValues.length) {
-					continue;
+				let propertyMatched = false;
+				if (property && value) {
+					const propertyValues = getPropertyValues(property);
+					propertyMatched = propertyValues.some((candidate) => candidate === value);
 				}
 
-				let isMatch = false;
-				if (this.settings.use_regex_to_check_property_values) {
+				let titleMatched = false;
+				if (titlePattern) {
 					try {
-						const regex = new RegExp(value);
-						isMatch = propertyValues.some((candidate) => regex.test(candidate));
+						const regex = new RegExp(titlePattern);
+						titleMatched = regex.test(fileName);
 					} catch (error) {
-						console.error('[Auto Note Mover] Invalid regular expression:', value, error);
+						console.error('[Auto Note Mover] Invalid title regular expression:', titlePattern, error);
 						continue;
 					}
-				} else {
-					isMatch = propertyValues.some((candidate) => candidate === value);
 				}
 
-				if (isMatch) {
-					fileMove(this.app, folder, fileFullName, file);
-					break;
+				if (!propertyMatched && !titleMatched) {
+					continue;
 				}
+
+				fileMove(this.app, folder, fileFullName, file);
+				break;
 			}
 		};
 
@@ -206,19 +211,29 @@ export default class AutoNoteMover extends Plugin {
 				.map((legacyRule) => {
 					const folder = legacyRule.folder ?? '';
 					if (legacyRule.pattern) {
-						return { property: 'title', value: legacyRule.pattern, folder };
+						return { property: '', value: '', title: legacyRule.pattern, folder };
 					}
-					return { property: 'tags', value: legacyRule.tag ?? '', folder };
+					return { property: 'tags', value: legacyRule.tag ?? '', title: '', folder };
 				})
-				.filter((rule) => rule.folder && rule.property && rule.value);
+				.filter((rule) => {
+					if (!rule.folder) {
+						return false;
+					}
+					const hasPropertyMatch = rule.property && rule.value;
+					const hasTitleMatch = !!rule.title;
+					return hasPropertyMatch || hasTitleMatch;
+				});
 			if (migratedRules.length) {
 				this.settings.property_rules = migratedRules;
 			}
 		}
 
-		if (typeof loaded?.use_regex_to_check_for_tags === 'boolean') {
-			this.settings.use_regex_to_check_property_values = loaded.use_regex_to_check_for_tags;
-		}
+		this.settings.property_rules = (this.settings.property_rules ?? []).map((rule) => ({
+			property: rule.property ?? '',
+			value: rule.value ?? '',
+			title: rule.title ?? '',
+			folder: rule.folder ?? '',
+		}));
 	}
 
 	async saveSettings() {

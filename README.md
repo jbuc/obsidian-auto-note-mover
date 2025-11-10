@@ -6,8 +6,9 @@ Auto Note Mover will automatically move the active notes to their respective fol
 
 Create one or more **property rules**. Each rule defines:
 
-- The property to inspect (for example: `tags`, `title`, `folder`, `path`, or any frontmatter key such as `frontmatter.status` or `status`).
-- The value (or regular expression) that should match that property.
+- The property to inspect (for example: `tags`, `folder`, `path`, or any frontmatter key such as `frontmatter.status` or `status`).
+- The exact value that property must contain for the rule to match.
+- *(Optional)* A title pattern expressed as a JavaScript regular expression.
 - The destination folder to move matching notes into.
 
 When the active note matches the rule, Auto Note Mover will move the note to the destination folder.
@@ -35,14 +36,17 @@ You can trigger by command.
 ## Rules
 
 1. Enter the property you want to evaluate. Supported shortcuts include `tags`, `tag`, `title`, `name`, `folder`, and `path`. Any frontmatter key can also be referenced using either its bare name (`status`) or the explicit `frontmatter.` prefix (`frontmatter.status`).
-2. Provide the value to match. If the “Use regular expressions to check property values” toggle is enabled, the value is treated as a JavaScript regular expression; otherwise an exact (case-sensitive) comparison is used.
-3. Choose the destination folder for notes that satisfy the rule.
-4. The rules are checked from top to bottom. The note is moved by the **first matching rule.**
+2. Provide the exact value to match. Comparisons are case sensitive.
+3. (Optional) Specify a title pattern using a JavaScript regular expression if you want to move notes based on their name instead of a property value.
+4. Choose the destination folder for notes that satisfy the rule.
+5. The rules are checked from top to bottom. The note is moved by the **first matching rule.**
 
 Tips:
 
 - Tags are automatically normalized so `#project` and `project` both match when you specify the `tags` property.
 - Frontmatter arrays (e.g., `status: [planning, drafting]`) are checked entry by entry, so matching either value moves the note.
+- Title patterns always use JavaScript regular expressions (e.g., `^Daily-\\d+$`).
+- Use the `title` or `name` property for exact matches; rely on the Title Pattern field when you need regex-based matching.
 - Use descriptive property names (e.g., `frontmatter.type`) to avoid confusion with similarly named fields in different contexts.
 
 ## Notice
