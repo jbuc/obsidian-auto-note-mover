@@ -1,14 +1,13 @@
 import AutoNoteMover from 'main';
-import { App, Notice, PluginSettingTab, Setting, ButtonComponent } from 'obsidian';
+import { App, PluginSettingTab, Setting, ButtonComponent } from 'obsidian';
 
 import { FolderSuggest } from 'suggests/file-suggest';
-import { TagSuggest } from 'suggests/tag-suggest';
 import { arrayMove } from 'utils/Utils';
 
-export interface FolderTagPattern {
+export interface PropertyRule {
+	property: string;
+	value: string;
 	folder: string;
-	tag: string;
-	pattern: string;
 }
 
 export interface ExcludedFolder {
@@ -17,18 +16,18 @@ export interface ExcludedFolder {
 
 export interface AutoNoteMoverSettings {
 	trigger_auto_manual: string;
-	use_regex_to_check_for_tags: boolean;
+	use_regex_to_check_property_values: boolean;
 	statusBar_trigger_indicator: boolean;
-	folder_tag_pattern: Array<FolderTagPattern>;
+	property_rules: Array<PropertyRule>;
 	use_regex_to_check_for_excluded_folder: boolean;
 	excluded_folder: Array<ExcludedFolder>;
 }
 
 export const DEFAULT_SETTINGS: AutoNoteMoverSettings = {
 	trigger_auto_manual: 'Automatic',
-	use_regex_to_check_for_tags: false,
+	use_regex_to_check_property_values: false,
 	statusBar_trigger_indicator: true,
-	folder_tag_pattern: [{ folder: '', tag: '', pattern: '' }],
+	property_rules: [{ property: '', value: '', folder: '' }],
 	use_regex_to_check_for_excluded_folder: false,
 	excluded_folder: [{ folder: '' }],
 };
@@ -104,25 +103,25 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					})
 			);
 
-		const useRegexToCheckForTags = document.createDocumentFragment();
-		useRegexToCheckForTags.append(
-			'If enabled, tags will be checked with regular expressions.',
+		const useRegexToCheckPropertyValues = document.createDocumentFragment();
+		useRegexToCheckPropertyValues.append(
+			'If enabled, property values will be checked with regular expressions.',
 			descEl.createEl('br'),
-			'For example, if you want to match the #tag, you would write ',
-			descEl.createEl('strong', { text: '^#tag$' }),
+			'For example, if you want to match the word project anywhere in the value, you would write ',
+			descEl.createEl('strong', { text: 'project' }),
 			descEl.createEl('br'),
-			'This setting is for a specific purpose, such as specifying nested tags in bulk.',
+			'Use this when you need pattern-based matching across frontmatter properties or tags.',
 			descEl.createEl('br'),
 			descEl.createEl('strong', {
-				text: 'If you want to use the suggested tags as they are, it is recommended to disable this setting.',
+				text: 'If you simply want to compare exact values, keep this disabled.',
 			})
 		);
 		new Setting(this.containerEl)
-			.setName('Use regular expressions to check for tags')
-			.setDesc(useRegexToCheckForTags)
+			.setName('Use regular expressions to check property values')
+			.setDesc(useRegexToCheckPropertyValues)
 			.addToggle((toggle) => {
-				toggle.setValue(this.plugin.settings.use_regex_to_check_for_tags).onChange(async (value) => {
-					this.plugin.settings.use_regex_to_check_for_tags = value;
+				toggle.setValue(this.plugin.settings.use_regex_to_check_property_values).onChange(async (value) => {
+					this.plugin.settings.use_regex_to_check_property_values = value;
 					await this.plugin.saveSettings();
 					this.display();
 				});
@@ -130,19 +129,14 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 
 		const ruleDesc = document.createDocumentFragment();
 		ruleDesc.append(
-			'1. Set the destination folder.',
+			'1. Enter the property you want to evaluate (for example: tags, type, status, title).',
 			descEl.createEl('br'),
-			'2. Set a tag or title that matches the note you want to move. ',
-			descEl.createEl('strong', { text: 'You can set either the tag or the title. ' }),
+			'2. Provide the value to match. If regex is enabled, the value is treated as a pattern.',
 			descEl.createEl('br'),
-			'3. The rules are checked in order from the top. The notes will be moved to the folder with the ',
+			'3. Choose the folder notes should be moved to when the rule matches.',
+			descEl.createEl('br'),
+			'4. The rules are checked in order from the top. The notes will be moved to the folder with the ',
 			descEl.createEl('strong', { text: 'first matching rule.' }),
-			descEl.createEl('br'),
-			'Tag: Be sure to add a',
-			descEl.createEl('strong', { text: ' # ' }),
-			'at the beginning.',
-			descEl.createEl('br'),
-			'Title: Tested by JavaScript regular expressions.',
 			descEl.createEl('br'),
 			descEl.createEl('br'),
 			'Notice:',
@@ -163,72 +157,43 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					.setButtonText('+')
 					.setCta()
 					.onClick(async () => {
-						this.plugin.settings.folder_tag_pattern.push({
+						this.plugin.settings.property_rules.push({
+							property: '',
+							value: '',
 							folder: '',
-							tag: '',
-							pattern: '',
 						});
 						await this.plugin.saveSettings();
 						this.display();
 					});
 			});
 
-		this.plugin.settings.folder_tag_pattern.forEach((folder_tag_pattern, index) => {
-			const settings = this.plugin.settings.folder_tag_pattern;
-			const settingTag = settings.map((e) => e['tag']);
-			const settingPattern = settings.map((e) => e['pattern']);
-			const checkArr = (arr: string[], val: string) => {
-				return arr.some((arrVal) => val === arrVal);
-			};
-
+		this.plugin.settings.property_rules.forEach((rule, index) => {
 			const s = new Setting(this.containerEl)
+				.addText((cb) => {
+					cb.setPlaceholder('Property')
+						.setValue(rule.property)
+						.onChange(async (newProperty) => {
+							this.plugin.settings.property_rules[index].property = newProperty.trim();
+							await this.plugin.saveSettings();
+						});
+				})
+				.addText((cb) => {
+					cb.setPlaceholder('Value (string or regex)')
+						.setValue(rule.value)
+						.onChange(async (newValue) => {
+							this.plugin.settings.property_rules[index].value = this.plugin.settings
+								.use_regex_to_check_property_values
+								? newValue
+								: newValue.trim();
+							await this.plugin.saveSettings();
+						});
+				})
 				.addSearch((cb) => {
 					new FolderSuggest(this.app, cb.inputEl);
 					cb.setPlaceholder('Folder')
-						.setValue(folder_tag_pattern.folder)
+						.setValue(rule.folder)
 						.onChange(async (newFolder) => {
-							this.plugin.settings.folder_tag_pattern[index].folder = newFolder.trim();
-							await this.plugin.saveSettings();
-						});
-				})
-
-				.addSearch((cb) => {
-					new TagSuggest(this.app, cb.inputEl);
-					cb.setPlaceholder('Tag')
-						.setValue(folder_tag_pattern.tag)
-						.onChange(async (newTag) => {
-							if (this.plugin.settings.folder_tag_pattern[index].pattern) {
-								this.display();
-								return new Notice(`You can set either the tag or the title.`);
-							}
-							if (newTag && checkArr(settingTag, newTag)) {
-								new Notice('This tag is already used.');
-								return;
-							}
-							if (!this.plugin.settings.use_regex_to_check_for_tags) {
-								this.plugin.settings.folder_tag_pattern[index].tag = newTag.trim();
-							} else if (this.plugin.settings.use_regex_to_check_for_tags) {
-								this.plugin.settings.folder_tag_pattern[index].tag = newTag;
-							}
-							await this.plugin.saveSettings();
-						});
-				})
-
-				.addSearch((cb) => {
-					cb.setPlaceholder('Title by regex')
-						.setValue(folder_tag_pattern.pattern)
-						.onChange(async (newPattern) => {
-							if (this.plugin.settings.folder_tag_pattern[index].tag) {
-								this.display();
-								return new Notice(`You can set either the tag or the title.`);
-							}
-
-							if (newPattern && checkArr(settingPattern, newPattern)) {
-								new Notice('This pattern is already used.');
-								return;
-							}
-
-							this.plugin.settings.folder_tag_pattern[index].pattern = newPattern;
+							this.plugin.settings.property_rules[index].folder = newFolder.trim();
 							await this.plugin.saveSettings();
 						});
 				})
@@ -236,7 +201,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					cb.setIcon('up-chevron-glyph')
 						.setTooltip('Move up')
 						.onClick(async () => {
-							arrayMove(this.plugin.settings.folder_tag_pattern, index, index - 1);
+							arrayMove(this.plugin.settings.property_rules, index, index - 1);
 							await this.plugin.saveSettings();
 							this.display();
 						});
@@ -245,7 +210,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					cb.setIcon('down-chevron-glyph')
 						.setTooltip('Move down')
 						.onClick(async () => {
-							arrayMove(this.plugin.settings.folder_tag_pattern, index, index + 1);
+							arrayMove(this.plugin.settings.property_rules, index, index + 1);
 							await this.plugin.saveSettings();
 							this.display();
 						});
@@ -254,7 +219,7 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 					cb.setIcon('cross')
 						.setTooltip('Delete')
 						.onClick(async () => {
-							this.plugin.settings.folder_tag_pattern.splice(index, 1);
+							this.plugin.settings.property_rules.splice(index, 1);
 							await this.plugin.saveSettings();
 							this.display();
 						});

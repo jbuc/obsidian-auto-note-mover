@@ -7,7 +7,7 @@ export default class AutoNoteMover extends Plugin {
 
 	async onload() {
 		await this.loadSettings();
-		const folderTagPattern = this.settings.folder_tag_pattern;
+		const propertyRules = this.settings.property_rules;
 		const excludedFolder = this.settings.excluded_folder;
 
 		const fileCheck = (file: TAbstractFile, oldPath?: string, caller?: string) => {
@@ -46,36 +46,84 @@ export default class AutoNoteMover extends Plugin {
 
 			const fileName = file.basename;
 			const fileFullName = file.basename + '.' + file.extension;
-			const settingsLength = folderTagPattern.length;
-			const cacheTag = getAllTags(fileCache);
+			const settingsLength = propertyRules.length;
+			const cacheTag = getAllTags(fileCache) ?? [];
+
+			const getFrontmatterValue = (key: string) => {
+				const frontmatter = fileCache?.frontmatter;
+				if (!frontmatter) return undefined;
+				const normalized = key.replace(/^frontmatter\./i, '');
+				return frontmatter[normalized] ?? frontmatter[normalized.toLowerCase()];
+			};
+
+			const getPropertyValues = (property: string): string[] => {
+				const normalizedProperty = property.trim();
+				if (!normalizedProperty) return [];
+				const lowerProperty = normalizedProperty.toLowerCase();
+
+				if (lowerProperty === 'tags' || lowerProperty === 'tag') {
+					const expandedTags = new Set<string>();
+					cacheTag.forEach((tag) => {
+						if (!tag) return;
+						expandedTags.add(tag);
+						if (tag.startsWith('#')) {
+							expandedTags.add(tag.substring(1));
+						}
+					});
+					return Array.from(expandedTags);
+				}
+				if (lowerProperty === 'title' || lowerProperty === 'basename' || lowerProperty === 'name') {
+					return [fileName];
+				}
+				if (lowerProperty === 'path') {
+					return [file.path];
+				}
+				if (lowerProperty === 'folder' || lowerProperty === 'directory') {
+					return [file.parent?.path ?? ''];
+				}
+
+				const value = getFrontmatterValue(normalizedProperty);
+				if (value === undefined || value === null) {
+					return [];
+				}
+				if (Array.isArray(value)) {
+					return value.map((entry) => String(entry));
+				}
+				if (['string', 'number', 'boolean'].includes(typeof value)) {
+					return [String(value)];
+				}
+				return [];
+			};
 
 			// checker
 			for (let i = 0; i < settingsLength; i++) {
-				const settingFolder = folderTagPattern[i].folder;
-				const settingTag = folderTagPattern[i].tag;
-				const settingPattern = folderTagPattern[i].pattern;
-				// Tag check
-				if (!settingPattern) {
-					if (!this.settings.use_regex_to_check_for_tags) {
-						if (cacheTag.find((e) => e === settingTag)) {
-							fileMove(this.app, settingFolder, fileFullName, file);
-							break;
-						}
-					} else if (this.settings.use_regex_to_check_for_tags) {
-						const regex = new RegExp(settingTag);
-						if (cacheTag.find((e) => regex.test(e))) {
-							fileMove(this.app, settingFolder, fileFullName, file);
-							break;
-						}
+				const rule = propertyRules[i];
+				const { folder, property, value } = rule;
+				if (!folder || !property || !value) {
+					continue;
+				}
+
+				const propertyValues = getPropertyValues(property);
+				if (!propertyValues.length) {
+					continue;
+				}
+
+				let isMatch = false;
+				if (this.settings.use_regex_to_check_property_values) {
+					try {
+						const regex = new RegExp(value);
+						isMatch = propertyValues.some((candidate) => regex.test(candidate));
+					} catch (error) {
+						console.error('[Auto Note Mover] Invalid regular expression:', value, error);
+						continue;
 					}
-					// Title check
-				} else if (!settingTag) {
-					const regex = new RegExp(settingPattern);
-					const isMatch = regex.test(fileName);
-					if (isMatch) {
-						fileMove(this.app, settingFolder, fileFullName, file);
-						break;
-					}
+				} else {
+					isMatch = propertyValues.some((candidate) => candidate === value);
+				}
+
+				if (isMatch) {
+					fileMove(this.app, folder, fileFullName, file);
+					break;
 				}
 			}
 		};
@@ -144,7 +192,33 @@ export default class AutoNoteMover extends Plugin {
 	onunload() {}
 
 	async loadSettings() {
-		this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+		const loaded = (await this.loadData()) as
+			| (Partial<AutoNoteMoverSettings> & {
+					folder_tag_pattern?: Array<{ folder: string; tag?: string; pattern?: string }>;
+					use_regex_to_check_for_tags?: boolean;
+			  })
+			| null;
+
+		this.settings = Object.assign({}, DEFAULT_SETTINGS, loaded);
+
+		if (loaded?.folder_tag_pattern?.length) {
+			const migratedRules = loaded.folder_tag_pattern
+				.map((legacyRule) => {
+					const folder = legacyRule.folder ?? '';
+					if (legacyRule.pattern) {
+						return { property: 'title', value: legacyRule.pattern, folder };
+					}
+					return { property: 'tags', value: legacyRule.tag ?? '', folder };
+				})
+				.filter((rule) => rule.folder && rule.property && rule.value);
+			if (migratedRules.length) {
+				this.settings.property_rules = migratedRules;
+			}
+		}
+
+		if (typeof loaded?.use_regex_to_check_for_tags === 'boolean') {
+			this.settings.use_regex_to_check_property_values = loaded.use_regex_to_check_for_tags;
+		}
 	}
 
 	async saveSettings() {
