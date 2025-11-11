@@ -35,10 +35,11 @@ You can trigger by command.
 ## Filter rules (beta)
 
 1. Enable **Filter engine** in the plugin settings (Settings → Community plugins → Auto Note Mover).
-2. Define a filter tree by combining groups (`all`, `any`, `none`) and individual conditions. Properties can reference file metadata (e.g., `file.name`, `file.folder`, `tags`, `frontmatter.status`). Comparators currently include `equals`, `contains`, `startsWith`, `endsWith`, `matchesRegex`, `exists`, and `notExists`. Set `negate: true` on a condition to invert it.
+2. Use the visual rule builder to combine groups (`all`, `any`, `none`) and individual conditions. Properties can reference file metadata (e.g., `file.name`, `file.folder`, `tags`, `frontmatter.status`). Comparators currently include `equals`, `contains`, `startsWith`, `endsWith`, `matchesRegex`, `exists`, and `notExists`. Set `negate: true` on a condition to invert it.
 3. Add one or more actions to run when the filter matches. Actions execute sequentially, so you can move a note, apply a template, rename it, or add/remove tags in one pass.
 4. Decide whether the rule should stop evaluation (`stopOnMatch`) or allow later rules to run.
 5. Save the JSON in the temporary editor. See `docs/filter-engine-sample.json` for ready-to-use examples that mirror the mockups above.
+6. Need to hand-edit the configuration? Expand the “Advanced: edit filter rules as JSON” section in the settings to tweak the raw structure or paste shared snippets.
 
 Tips:
 

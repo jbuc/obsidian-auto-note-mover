@@ -1,9 +1,10 @@
 import AutoNoteMover from 'main';
-import { App, PluginSettingTab, Setting, ButtonComponent, Notice, TextAreaComponent } from 'obsidian';
+import { App, PluginSettingTab, Setting, ButtonComponent, Notice } from 'obsidian';
 
 import { FolderSuggest } from 'suggests/file-suggest';
 import { arrayMove } from 'utils/Utils';
 import { FilterRule } from 'filter/filterTypes';
+import { renderFilterRulesEditor } from './filterBuilder';
 
 export interface PropertyRule {
 	property: string;
@@ -231,51 +232,12 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			return;
 		}
 
-		let draftFilterRules = JSON.stringify(this.plugin.settings.filter_rules ?? [], null, 2);
-		const filterSetting = new Setting(this.containerEl)
-			.setName('Filter rules (JSON)')
-			.setDesc(
-				'Temporary JSON editor for the new filter engine. Enter an array of rules that follow the schema defined in filter/filterTypes.ts.'
-			);
-
-		let textAreaRef: TextAreaComponent | null = null;
-		filterSetting.addTextArea((text) => {
-			textAreaRef = text;
-			text.setValue(draftFilterRules).onChange((value) => {
-				draftFilterRules = value;
-			});
-			text.inputEl.rows = 12;
-			text.inputEl.style.fontFamily = 'var(--font-monospace)';
+		const builderContainer = this.containerEl.createDiv({ cls: 'anm-filter-builder-section' });
+		renderFilterRulesEditor(builderContainer, this.plugin.settings.filter_rules ?? [], async () => {
+			await this.plugin.saveSettings();
 		});
 
-		filterSetting.addExtraButton((button) => {
-			button
-				.setIcon('reset')
-				.setTooltip('Reset to current value')
-				.onClick(() => {
-					draftFilterRules = JSON.stringify(this.plugin.settings.filter_rules ?? [], null, 2);
-					if (textAreaRef) {
-						textAreaRef.setValue(draftFilterRules);
-					}
-				});
-		});
-
-			filterSetting.addExtraButton((button) => {
-				button
-					.setIcon('save')
-					.setTooltip('Save rules')
-					.onClick(async () => {
-						try {
-							const parsed = JSON.parse(draftFilterRules) as FilterRule[];
-							this.plugin.settings.filter_rules = parsed;
-							await this.plugin.saveSettings();
-							new Notice('Filter rules saved.');
-						} catch (error) {
-							console.error('[Auto Note Mover] Invalid filter rules JSON', error);
-							new Notice('Invalid JSON. Changes not saved.');
-						}
-					});
-			});
+		this.renderFilterRulesJsonEditor();
 	}
 
 	private renderLegacyRulesNotice() {
@@ -286,5 +248,42 @@ export class AutoNoteMoverSettingTab extends PluginSettingTab {
 			'To migrate, recreate the logic using the filter engine JSON editor above (see docs/filter-engine-sample.json for examples).'
 		);
 		new Setting(this.containerEl).setName('Legacy rules').setDesc(legacyDesc);
+	}
+
+	private renderFilterRulesJsonEditor() {
+		const details = this.containerEl.createEl('details', { cls: 'anm-json-editor' });
+		details.createEl('summary', { text: 'Advanced: edit filter rules as JSON' });
+
+		const wrapper = details.createDiv();
+		let draftFilterRules = JSON.stringify(this.plugin.settings.filter_rules ?? [], null, 2);
+		const textArea = wrapper.createEl('textarea', { text: draftFilterRules });
+		textArea.rows = 12;
+		textArea.style.width = '100%';
+		textArea.style.fontFamily = 'var(--font-monospace)';
+
+		textArea.oninput = () => {
+			draftFilterRules = textArea.value;
+		};
+
+		const buttons = wrapper.createDiv({ cls: 'anm-json-editor-actions' });
+
+		const resetBtn = buttons.createEl('button', { text: 'Reset' });
+		resetBtn.onclick = () => {
+			draftFilterRules = JSON.stringify(this.plugin.settings.filter_rules ?? [], null, 2);
+			textArea.value = draftFilterRules;
+		};
+
+		const saveBtn = buttons.createEl('button', { text: 'Save' });
+		saveBtn.onclick = async () => {
+			try {
+				const parsed = JSON.parse(draftFilterRules) as FilterRule[];
+				this.plugin.settings.filter_rules = parsed;
+				await this.plugin.saveSettings();
+				new Notice('Filter rules saved.');
+			} catch (error) {
+				console.error('[Auto Note Mover] Invalid filter rules JSON', error);
+				new Notice('Invalid JSON. Changes not saved.');
+			}
+		};
 	}
 }
