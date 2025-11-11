@@ -1,5 +1,5 @@
 import { App, normalizePath, Notice, TFile, TFolder } from 'obsidian';
-import type { RuleAction, MoveAction, ApplyTemplateAction, RenameAction } from './filterTypes';
+import type { RuleAction, MoveAction, ApplyTemplateAction, RenameAction, TagAction } from './filterTypes';
 
 export interface ActionContext {
 	app: App;
@@ -17,6 +17,10 @@ export async function executeActions(actions: RuleAction[], context: ActionConte
 				break;
 			case 'rename':
 				context.file = await executeRenameAction(action, context);
+				break;
+			case 'addTag':
+			case 'removeTag':
+				await executeTagAction(action, context);
 				break;
 			default:
 				console.warn('[Auto Note Mover] Unsupported action type', action);
@@ -84,6 +88,57 @@ async function executeRenameAction(action: RenameAction, context: ActionContext)
 		return refreshed;
 	}
 	return context.file;
+}
+
+async function executeTagAction(action: TagAction, context: ActionContext): Promise<void> {
+	const tag = action.tag?.trim();
+	if (!tag) {
+		console.warn('[Auto Note Mover] Tag action missing tag value.');
+		return;
+	}
+	const processFrontMatter = (context.app.fileManager as unknown as {
+		processFrontMatter?: (
+			file: TFile,
+			handler: (frontmatter: Record<string, unknown>) => void
+		) => Promise<void>;
+	}).processFrontMatter;
+
+	if (typeof processFrontMatter !== 'function') {
+		console.warn('[Auto Note Mover] processFrontMatter API unavailable; tag actions skipped.');
+		return;
+	}
+
+	try {
+		await processFrontMatter(context.file, (frontmatter: Record<string, unknown>) => {
+			const existing = normalizeTags(frontmatter.tags);
+			const set = new Set(existing);
+			if (action.type === 'addTag') {
+				set.add(tag);
+			} else {
+				set.delete(tag);
+			}
+			const next = Array.from(set);
+			if (!next.length) {
+				delete frontmatter.tags;
+			} else if (Array.isArray(frontmatter.tags)) {
+				frontmatter.tags = next;
+			} else {
+				frontmatter.tags = next.length === 1 ? next[0] : next;
+			}
+		});
+	} catch (error) {
+		console.error('[Auto Note Mover] Failed to update tags via action', error);
+	}
+}
+
+function normalizeTags(input: unknown): string[] {
+	if (Array.isArray(input)) {
+		return input.map((tag) => String(tag)).filter(Boolean);
+	}
+	if (typeof input === 'string') {
+		return input.split(',').map((tag) => tag.trim()).filter(Boolean);
+	}
+	return [];
 }
 
 async function ensureFolderExists(app: App, folderPath: string, allowCreate = false): Promise<void> {

@@ -84,7 +84,7 @@ export interface FilterRule {
 
 - Top-level `all` group requiring a date-like filename and a folder containing `project`.
 - Nested `any` and `all` groups to demonstrate combination logic.
-- Actions stack move + template application + rename prefix.
+- Actions stack move + template application + rename prefix + tag removal.
 
 Load the file, copy the JSON into the settings panel, and enable the filter engine to test-drive the workflow.
 
