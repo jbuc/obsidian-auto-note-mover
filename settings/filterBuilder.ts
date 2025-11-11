@@ -19,6 +19,8 @@ export const renderFilterRulesEditor = (
 	rules: FilterRule[],
 	onChange: OnChange
 ): void => {
+	injectFilterBuilderStyles();
+
 	const wrapper = containerEl.createDiv('anm-filter-rules');
 
 	const refresh = () => {
@@ -39,11 +41,12 @@ export const renderFilterRulesEditor = (
 		if (!rules.length) {
 			wrapper.createEl('p', { text: 'No rules yet. Add one below.' });
 		}
+
 		rules.forEach((rule, index) => {
 			renderRuleCard(wrapper, rule, index);
 		});
 
-		const addRuleButton = wrapper.createEl('button', { text: 'Add rule', cls: 'anm-btn' });
+		const addRuleButton = wrapper.createEl('button', { text: 'Add rule', cls: 'anm-btn-primary' });
 		addRuleButton.onclick = async () => {
 			rules.push(createDefaultRule());
 			await notifyAndRefresh();
@@ -52,44 +55,41 @@ export const renderFilterRulesEditor = (
 
 	const renderRuleCard = (parent: HTMLElement, rule: FilterRule, index: number) => {
 		const card = parent.createDiv('anm-rule-card');
-		const header = card.createDiv('anm-rule-header');
 
-		const nameInput = header.createEl('input', { value: rule.name, attr: { placeholder: 'Rule name' } });
+		const header = card.createDiv('anm-rule-header');
+		const nameInput = header.createEl('input', {
+			value: rule.name,
+			attr: { placeholder: 'Rule name' },
+			cls: 'anm-rule-name',
+		});
 		nameInput.oninput = async () => {
 			rule.name = nameInput.value;
 			await notify();
 		};
 
-		const enabledLabel = header.createSpan({ text: 'Enabled' });
-		const enabledToggle = header.createEl('input', { type: 'checkbox' });
-		enabledToggle.checked = rule.enabled;
-		enabledToggle.onchange = async () => {
-			rule.enabled = enabledToggle.checked;
+		const toggleGroup = header.createDiv('anm-toggle-group');
+		const enabledToggle = createToggleControl(toggleGroup, 'Enabled', rule.enabled, async (value) => {
+			rule.enabled = value;
 			await notify();
-		};
-		header.append(enabledLabel, enabledToggle);
-
-		const stopLabel = header.createSpan({ text: 'Stop on match' });
-		const stopToggle = header.createEl('input', { type: 'checkbox' });
-		stopToggle.checked = !!rule.stopOnMatch;
-		stopToggle.onchange = async () => {
-			rule.stopOnMatch = stopToggle.checked;
+		});
+		enabledToggle.input.checked = rule.enabled;
+		const stopToggle = createToggleControl(toggleGroup, 'Stop on match', !!rule.stopOnMatch, async (value) => {
+			rule.stopOnMatch = value;
 			await notify();
-		};
-		header.append(stopLabel, stopToggle);
+		});
+		stopToggle.input.checked = !!rule.stopOnMatch;
 
-		const deleteButton = header.createEl('button', { text: 'Delete', cls: 'anm-btn-danger' });
+		const deleteButton = header.createEl('button', { text: 'Delete rule', cls: 'anm-btn-danger' });
 		deleteButton.onclick = async () => {
 			rules.splice(index, 1);
 			await notifyAndRefresh();
 		};
 
 		// Filter tree
-		card.createEl('h4', { text: 'Filter criteria' });
-		renderFilterNodeEditor(card, rule.filter, null, null, notify, notifyAndRefresh);
+		renderFilterNodeEditor(card, rule.filter, null, null, notify, notifyAndRefresh, true);
 
 		// Actions
-		card.createEl('h4', { text: 'Actions' });
+		card.createEl('p', { text: 'Make the following changes:', cls: 'anm-actions-heading' });
 		renderActionsEditor(card, rule.actions, notify, notifyAndRefresh);
 	};
 
@@ -99,53 +99,84 @@ export const renderFilterRulesEditor = (
 		parentChildren: FilterNode[] | null,
 		index: number | null,
 		notifyChange: () => Promise<void>,
-		notifyAndRefresh: () => Promise<void>
+		notifyAndRefresh: () => Promise<void>,
+		isRoot = false,
+		parentOperator: FilterGroup['operator'] = 'all'
 	) => {
 		if (node.type === 'group') {
 			const groupEl = container.createDiv('anm-group');
-			const operatorSelect = groupEl.createEl('select');
-			['all', 'any', 'none'].forEach((op) => {
-				operatorSelect.append(new Option(op, op, false, node.operator === op));
+			const header = groupEl.createDiv('anm-group-header');
+
+			const intro = isRoot ? 'where' : parentOperator === 'any' ? 'or' : 'and';
+			header.createSpan({ text: `${intro} `, cls: 'anm-logic-label' });
+			header.createSpan({ text: operatorLabel(node.operator), cls: 'anm-operator-label' });
+
+			const operatorSelect = header.createEl('select', { cls: 'anm-operator-select' });
+			[
+				{ label: 'all of the following are true', value: 'all' },
+				{ label: 'any of the following are true', value: 'any' },
+				{ label: 'none of the following are true', value: 'none' },
+			].forEach((option) => {
+				operatorSelect.append(new Option(option.label, option.value, false, node.operator === option.value));
 			});
 			operatorSelect.onchange = async () => {
 				node.operator = operatorSelect.value as FilterGroup['operator'];
 				await notifyChange();
 			};
 
-			const removeButton =
-				parentChildren && index !== null
-					? groupEl.createEl('button', { text: 'Remove group', cls: 'anm-btn-danger' })
-					: null;
-			if (removeButton) {
-				removeButton.onclick = async () => {
-					parentChildren.splice(index!, 1);
+			const chevron = header.createSpan({ text: '▾', cls: 'anm-chevron' });
+			chevron.onclick = () => {
+				const collapsed = groupEl.hasClass('anm-collapsed');
+				groupEl.toggleClass('anm-collapsed', !collapsed);
+			};
+
+			if (parentChildren && index !== null) {
+				const remove = header.createEl('button', { text: 'Remove', cls: 'anm-btn-link' });
+				remove.onclick = async () => {
+					parentChildren.splice(index, 1);
 					await notifyAndRefresh();
 				};
 			}
 
 			const childrenContainer = groupEl.createDiv('anm-group-children');
 			node.children.forEach((child, childIndex) => {
-				renderFilterNodeEditor(childrenContainer, child, node.children, childIndex, notifyChange, notifyAndRefresh);
+				renderFilterNodeEditor(
+					childrenContainer,
+					child,
+					node.children,
+					childIndex,
+					notifyChange,
+					notifyAndRefresh,
+					false,
+					node.operator
+				);
 			});
 
-			const addConditionBtn = groupEl.createEl('button', { text: 'Add condition', cls: 'anm-btn' });
+			const footer = groupEl.createDiv('anm-group-footer');
+			const addConditionBtn = footer.createEl('button', { text: 'add criteria', cls: 'anm-link-btn' });
 			addConditionBtn.onclick = async () => {
 				node.children.push(createDefaultCondition());
 				await notifyAndRefresh();
 			};
-			const addGroupBtn = groupEl.createEl('button', { text: 'Add group', cls: 'anm-btn' });
+			const addGroupBtn = footer.createEl('button', { text: 'add group', cls: 'anm-link-btn' });
 			addGroupBtn.onclick = async () => {
 				node.children.push(createDefaultGroup());
 				await notifyAndRefresh();
 			};
 		} else {
-			const conditionEl = container.createDiv('anm-condition');
-			const propInput = conditionEl.createEl('input', {
-				value: node.property,
-				attr: { placeholder: 'Property (e.g., file.name, frontmatter.type)' },
+			const conditionRow = container.createDiv('anm-condition-row');
+			const connector = conditionRow.createSpan({
+				text: connectorLabel(parentChildren, index, parentOperator),
+				cls: 'anm-condition-connector',
 			});
-			propInput.oninput = async () => {
-				node.property = propInput.value;
+			const conditionEl = conditionRow.createDiv('anm-condition');
+
+			const propertySelect = conditionEl.createEl('input', {
+				value: node.property,
+				attr: { placeholder: 'file.name, tags, frontmatter.status' },
+			});
+			propertySelect.oninput = async () => {
+				node.property = propertySelect.value;
 				await notifyChange();
 			};
 
@@ -160,33 +191,27 @@ export const renderFilterRulesEditor = (
 
 			const valueInput = conditionEl.createEl('input', {
 				value: Array.isArray(node.value) ? node.value.join(',') : node.value ?? '',
-				attr: { placeholder: 'Value (optional)' },
+				attr: { placeholder: 'value / pattern (optional)' },
 			});
 			valueInput.oninput = async () => {
 				node.value = valueInput.value;
 				await notifyChange();
 			};
 
-			const caseCheckbox = conditionEl.createEl('input', { type: 'checkbox' });
-			caseCheckbox.checked = !!node.caseSensitive;
-			caseCheckbox.onchange = async () => {
-				node.caseSensitive = caseCheckbox.checked;
+			const toggleRow = conditionEl.createDiv('anm-condition-options');
+			createToggleControl(toggleRow, 'Case sensitive', !!node.caseSensitive, async (value) => {
+				node.caseSensitive = value;
 				await notifyChange();
-			};
-			conditionEl.createSpan({ text: 'Case sensitive' }).append(caseCheckbox);
-
-			const negateCheckbox = conditionEl.createEl('input', { type: 'checkbox' });
-			negateCheckbox.checked = !!node.negate;
-			negateCheckbox.onchange = async () => {
-				node.negate = negateCheckbox.checked;
+			});
+			createToggleControl(toggleRow, 'Negate', !!node.negate, async (value) => {
+				node.negate = value;
 				await notifyChange();
-			};
-			conditionEl.createSpan({ text: 'Negate' }).append(negateCheckbox);
+			});
 
 			if (parentChildren && index !== null) {
-				const removeBtn = conditionEl.createEl('button', { text: 'Remove', cls: 'anm-btn-danger' });
-				removeBtn.onclick = async () => {
-					parentChildren.splice(index!, 1);
+				const remove = conditionEl.createEl('button', { text: 'Remove', cls: 'anm-btn-link danger' });
+				remove.onclick = async () => {
+					parentChildren.splice(index, 1);
 					await notifyAndRefresh();
 				};
 			}
@@ -201,9 +226,8 @@ export const renderFilterRulesEditor = (
 	) => {
 		const list = container.createDiv('anm-actions');
 		actions.forEach((action, index) => {
-			const actionEl = list.createDiv('anm-action');
-
-			const typeSelect = actionEl.createEl('select');
+			const row = list.createDiv('anm-action-row');
+			const typeSelect = row.createEl('select');
 			ACTION_TYPES.forEach((type) => {
 				typeSelect.append(new Option(type, type, false, action.type === type));
 			});
@@ -212,18 +236,17 @@ export const renderFilterRulesEditor = (
 				await notifyAndRefresh();
 			};
 
-			renderActionFields(actionEl, action, async () => {
-				await notifyChange();
-			});
+			const fields = row.createDiv('anm-action-fields');
+			renderActionFields(fields, action, notifyChange);
 
-			const removeBtn = actionEl.createEl('button', { text: 'Remove', cls: 'anm-btn-danger' });
-			removeBtn.onclick = async () => {
+			const remove = row.createEl('button', { text: 'Remove', cls: 'anm-btn-link danger' });
+			remove.onclick = async () => {
 				actions.splice(index, 1);
 				await notifyAndRefresh();
 			};
 		});
 
-		const addActionBtn = container.createEl('button', { text: 'Add action', cls: 'anm-btn' });
+		const addActionBtn = container.createEl('button', { text: 'add action', cls: 'anm-link-btn' });
 		addActionBtn.onclick = async () => {
 			actions.push(createDefaultAction('move'));
 			await notifyAndRefresh();
@@ -233,30 +256,27 @@ export const renderFilterRulesEditor = (
 	const renderActionFields = (container: HTMLElement, action: RuleAction, notifyChange: () => Promise<void>) => {
 		switch (action.type) {
 			case 'move': {
-				const input = container.createEl('input', {
+				const targetInput = container.createEl('input', {
 					value: action.targetFolder,
 					attr: { placeholder: 'Destination folder' },
 				});
-				input.oninput = async () => {
-					action.targetFolder = input.value;
+				targetInput.oninput = async () => {
+					action.targetFolder = targetInput.value;
 					await notifyChange();
 				};
-				const createToggle = container.createEl('input', { type: 'checkbox' });
-				createToggle.checked = !!action.createFolderIfMissing;
-				createToggle.onchange = async () => {
-					action.createFolderIfMissing = createToggle.checked;
+				createToggleControl(container, 'Create folder if needed', !!action.createFolderIfMissing, async (value) => {
+					action.createFolderIfMissing = value;
 					await notifyChange();
-				};
-				container.createSpan({ text: 'Create folder if missing' }).append(createToggle);
+				});
 				break;
 			}
 			case 'applyTemplate': {
-				const pathInput = container.createEl('input', {
+				const templateInput = container.createEl('input', {
 					value: action.templatePath,
 					attr: { placeholder: 'Template path (relative to vault)' },
 				});
-				pathInput.oninput = async () => {
-					action.templatePath = pathInput.value;
+				templateInput.oninput = async () => {
+					action.templatePath = templateInput.value;
 					await notifyChange();
 				};
 				const modeSelect = container.createEl('select');
@@ -270,28 +290,28 @@ export const renderFilterRulesEditor = (
 				break;
 			}
 			case 'rename': {
-				const prefixInput = container.createEl('input', {
+				const prefix = container.createEl('input', {
 					value: action.prefix ?? '',
 					attr: { placeholder: 'Prefix' },
 				});
-				prefixInput.oninput = async () => {
-					action.prefix = prefixInput.value || undefined;
+				prefix.oninput = async () => {
+					action.prefix = prefix.value || undefined;
 					await notifyChange();
 				};
-				const suffixInput = container.createEl('input', {
+				const suffix = container.createEl('input', {
 					value: action.suffix ?? '',
 					attr: { placeholder: 'Suffix' },
 				});
-				suffixInput.oninput = async () => {
-					action.suffix = suffixInput.value || undefined;
+				suffix.oninput = async () => {
+					action.suffix = suffix.value || undefined;
 					await notifyChange();
 				};
-				const replaceInput = container.createEl('input', {
+				const replace = container.createEl('input', {
 					value: action.replace ?? '',
 					attr: { placeholder: 'Replace basename' },
 				});
-				replaceInput.oninput = async () => {
-					action.replace = replaceInput.value || undefined;
+				replace.oninput = async () => {
+					action.replace = replace.value || undefined;
 					await notifyChange();
 				};
 				break;
@@ -314,6 +334,50 @@ export const renderFilterRulesEditor = (
 	};
 
 	refresh();
+};
+
+const createToggleControl = (
+	container: HTMLElement,
+	label: string,
+	value: boolean,
+	onChange: (value: boolean) => Promise<void>
+) => {
+	const wrapper = container.createDiv('anm-toggle');
+	const span = wrapper.createSpan({ text: label });
+	const input = wrapper.createEl('input', { type: 'checkbox' });
+	input.checked = value;
+	input.onchange = () => onChange(input.checked);
+	return { wrapper, span, input };
+};
+
+const connectorLabel = (
+	parentChildren: FilterNode[] | null,
+	index: number | null,
+	parentOperator: FilterGroup['operator']
+) => {
+	if (!parentChildren || index === null) {
+		return '';
+	}
+	if (index === 0) {
+		return 'where';
+	}
+	if (parentOperator === 'any') {
+		return 'or';
+	}
+	return 'and';
+};
+
+const operatorLabel = (operator: FilterGroup['operator']) => {
+	switch (operator) {
+		case 'all':
+			return 'all of the following are true';
+		case 'any':
+			return 'any of the following are true';
+		case 'none':
+			return 'none of the following are true';
+		default:
+			return 'all of the following are true';
+	}
 };
 
 const createDefaultCondition = (): FilterCondition => ({
@@ -355,3 +419,156 @@ const createDefaultRule = (): FilterRule => ({
 	actions: [createDefaultAction('move')],
 	stopOnMatch: true,
 });
+
+let stylesInjected = false;
+const injectFilterBuilderStyles = () => {
+	if (stylesInjected) return;
+	stylesInjected = true;
+	const style = document.createElement('style');
+	style.textContent = `
+.anm-filter-rules {
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+.anm-rule-card {
+	border: 1px solid var(--interactive-normal);
+	border-radius: 8px;
+	padding: 1rem;
+	background: var(--background-primary);
+	box-shadow: var(--shadow-s);
+	display: flex;
+	flex-direction: column;
+	gap: 1rem;
+}
+.anm-rule-header {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+	justify-content: space-between;
+}
+.anm-rule-name {
+	flex: 1 1 220px;
+	font-weight: 600;
+}
+.anm-toggle-group,
+.anm-condition-options {
+	display: flex;
+	gap: 0.5rem;
+	align-items: center;
+	flex-wrap: wrap;
+}
+.anm-btn-primary,
+.anm-btn-danger,
+.anm-btn-link,
+.anm-link-btn {
+	border: none;
+	cursor: pointer;
+	background: transparent;
+	color: var(--text-accent);
+	padding: 0.25rem 0.5rem;
+}
+.anm-btn-primary {
+	background: var(--interactive-accent);
+	color: var(--text-on-accent);
+	border-radius: 4px;
+}
+.anm-btn-danger,
+.anm-btn-link.danger {
+	color: var(--text-error);
+}
+.anm-group {
+	border: 1px solid var(--interactive-border);
+	border-radius: 8px;
+	padding: 0.75rem;
+	display: flex;
+	flex-direction: column;
+	gap: 0.75rem;
+	background: var(--background-secondary);
+}
+.anm-group-header {
+	display: flex;
+	align-items: center;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	font-weight: 600;
+}
+.anm-group-children {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+.anm-group-footer {
+	display: flex;
+	gap: 1rem;
+}
+.anm-condition-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.5rem;
+}
+.anm-condition-connector {
+	width: 40px;
+	text-transform: lowercase;
+	color: var(--text-muted);
+	padding-top: 0.4rem;
+}
+.anm-condition {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	gap: 0.4rem;
+}
+.anm-condition input,
+.anm-condition select {
+	width: 100%;
+}
+.anm-actions-heading {
+	margin: 0;
+	font-weight: 600;
+}
+.anm-actions {
+	display: flex;
+	flex-direction: column;
+	gap: 0.5rem;
+}
+.anm-action-row {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.5rem;
+	align-items: center;
+	padding: 0.5rem;
+	border: 1px dashed var(--interactive-border);
+	border-radius: 6px;
+}
+.anm-action-fields {
+	display: flex;
+	flex: 1;
+	gap: 0.5rem;
+	flex-wrap: wrap;
+}
+.anm-link-btn {
+	color: var(--text-accent);
+	text-decoration: underline;
+	background: transparent;
+	padding: 0;
+}
+.anm-json-editor summary {
+	cursor: pointer;
+	font-weight: 600;
+}
+.anm-json-editor textarea {
+	margin-top: 0.5rem;
+	border: 1px solid var(--interactive-border);
+	border-radius: 6px;
+	padding: 0.5rem;
+}
+.anm-json-editor-actions {
+	display: flex;
+	gap: 0.5rem;
+	margin-top: 0.5rem;
+}
+`;
+	document.head.append(style);
+};
