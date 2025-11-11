@@ -1,7 +1,7 @@
 [
 	{
-		"id": "projects-task-filter",
-		"name": "Project Tasks",
+		"id": "project-criteria",
+		"name": "Project Criteria",
 		"enabled": true,
 		"stopOnMatch": true,
 		"filter": {
@@ -10,67 +10,26 @@
 			"children": [
 				{
 					"type": "condition",
-					"property": "file.name",
-					"comparator": "matchesRegex",
-					"value": "/\\d{4}-\\d{2}-\\d{2}/"
+					"property": "frontmatter.type",
+					"comparator": "equals",
+					"value": "project",
+					"caseSensitive": false
 				},
 				{
 					"type": "condition",
 					"property": "file.folder",
 					"comparator": "contains",
 					"value": "project",
-					"caseSensitive": false
-				},
-				{
-					"type": "group",
-					"operator": "any",
-					"children": [
-						{
-							"type": "condition",
-							"property": "file.name",
-							"comparator": "matchesRegex",
-							"value": "/\\d{4}-\\d{2}-\\d{2}/"
-						},
-						{
-							"type": "condition",
-							"property": "file.folder",
-							"comparator": "contains",
-							"value": "project",
-							"caseSensitive": false
-						}
-					]
-				},
-				{
-					"type": "group",
-					"operator": "all",
-					"children": [
-						{
-							"type": "condition",
-							"property": "file.name",
-							"comparator": "matchesRegex",
-							"value": "/\\d{4}-\\d{2}-\\d{2}/"
-						},
-						{
-							"type": "condition",
-							"property": "file.folder",
-							"comparator": "contains",
-							"value": "project",
-							"caseSensitive": false
-						}
-					]
+					"caseSensitive": false,
+					"negate": true
 				}
 			]
 		},
 		"actions": [
 			{
 				"type": "move",
-				"targetFolder": "Projects/To Do",
+				"targetFolder": "To Do/Project",
 				"createFolderIfMissing": true
-			},
-			{
-				"type": "applyTemplate",
-				"templatePath": "_templates/task.md",
-				"mode": "prepend"
 			},
 			{
 				"type": "rename",
