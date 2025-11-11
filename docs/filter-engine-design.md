@@ -80,7 +80,8 @@ export interface FilterRule {
 4. Should filters support time-based comparators (created date, modified date)?
 
 ## Next Steps
-1. Define the comparator/action enums and their serialization format.
-2. Prototype the data model + evaluation engine in isolation with tests.
-3. Design the new settings UI (wireframes or mock components).
-4. Implement migration + feature flag so users can opt into the new engine.
+1. Define the comparator/action enums and their serialization format. ✅ (`filter/filterTypes.ts`)
+2. Prototype the data model + evaluation engine in isolation with tests. ✅ (`filter/filterEvaluator.ts`)
+3. Add action executors (move/template/rename) to validate the schema. ✅ (`filter/actionExecutor.ts`)
+4. Design the new settings UI (wireframes or mock components).
+5. Implement migration + feature flag so users can opt into the new engine.
