@@ -79,7 +79,14 @@ export const renderFilterRulesEditor = (
 		});
 		stopToggle.input.checked = !!rule.stopOnMatch;
 
-		const deleteButton = header.createEl('button', { text: 'Delete rule', cls: 'anm-btn-danger' });
+		const actionsRow = header.createDiv('anm-rule-actions');
+		const duplicateButton = actionsRow.createEl('button', { text: 'Duplicate', cls: 'anm-btn-link' });
+		duplicateButton.onclick = async () => {
+			const clone = cloneRule(rule);
+			rules.splice(index + 1, 0, clone);
+			await notifyAndRefresh();
+		};
+		const deleteButton = actionsRow.createEl('button', { text: 'Delete', cls: 'anm-btn-danger' });
 		deleteButton.onclick = async () => {
 			rules.splice(index, 1);
 			await notifyAndRefresh();
@@ -418,6 +425,12 @@ const createDefaultRule = (): FilterRule => ({
 	filter: createDefaultGroup(),
 	actions: [createDefaultAction('move')],
 	stopOnMatch: true,
+});
+
+const cloneRule = (rule: FilterRule): FilterRule => ({
+	...structuredClone(rule),
+	id: `rule-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+	name: `${rule.name} (copy)`,
 });
 
 let stylesInjected = false;
