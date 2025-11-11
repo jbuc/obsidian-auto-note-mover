@@ -79,6 +79,15 @@ export interface FilterRule {
 3. How to surface validation errors for deeply nested groups?
 4. Should filters support time-based comparators (created date, modified date)?
 
+## Sample Rules
+`docs/filter-engine-sample.json` contains a rule set that mirrors the UI mockup shared earlier:
+
+- Top-level `all` group requiring a date-like filename and a folder containing `project`.
+- Nested `any` and `all` groups to demonstrate combination logic.
+- Actions stack move + template application + rename prefix.
+
+Load the file, copy the JSON into the settings panel, and enable the filter engine to test-drive the workflow.
+
 ## Next Steps
 1. Define the comparator/action enums and their serialization format. ✅ (`filter/filterTypes.ts`)
 2. Prototype the data model + evaluation engine in isolation with tests. ✅ (`filter/filterEvaluator.ts`)

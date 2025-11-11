@@ -49,6 +49,15 @@ Tips:
 - Use the `title` or `name` property for exact matches; rely on the Title Pattern field when you need regex-based matching.
 - Use descriptive property names (e.g., `frontmatter.type`) to avoid confusion with similarly named fields in different contexts.
 
+## Filter Engine (beta)
+
+Enable **Filter engine** under the plugin settings to try the new nested criteria workflow (legacy property rules are ignored while this is enabled).
+
+- Build rules as JSON objects that follow the schema in `filter/filterTypes.ts`. Each rule combines a filter tree (`group` + `condition` nodes) and a list of actions (`move`, `applyTemplate`, `rename`, etc.).
+- Stack multiple actions to move a note, inject a template, and adjust its title in a single pass.
+- Set `stopOnMatch` on a rule to halt evaluation once it fires; leave it `false` to let subsequent rules run.
+- Use `docs/filter-engine-sample.json` as a starting point—it mirrors the mockup shared earlier and can be pasted directly into the temporary JSON editor.
+
 ## Notice
 
 1. Attached files will not be moved, but they will still appear in the note.
